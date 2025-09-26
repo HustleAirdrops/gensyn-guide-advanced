@@ -50,6 +50,8 @@ echo_green ">> File descriptor limits: $(ulimit -n)"
 SOURCE_DIR="/root/"
 DEST_MODAL_DATA_DIR="$ROOT/modal-login/temp-data/"
 DEST_ROOT_DIR="$ROOT/"
+TEMP_DATA_DIR="$SWARM_DIR/modal-login/temp-data"
+SWARM_DIR="$HOME/rl-swarm"
 
 # --- PIDs for cleanup ---
 SERVER_PID=""
@@ -112,6 +114,7 @@ install_unzip() {
 
 # Unzip files from HOME (no validation)
 unzip_files() {
+    HOME=${HOME:-$ROOT}  # Fallback to $ROOT if $HOME is unset
     ZIP_FILE=$(find "$HOME" -maxdepth 1 -type f -name "*.zip" | head -n 1)
     
     if [ -n "$ZIP_FILE" ]; then
