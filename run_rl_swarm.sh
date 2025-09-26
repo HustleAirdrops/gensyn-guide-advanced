@@ -345,7 +345,7 @@ FINAL_LOG_FILE="$ROOT/logs/swarm_launcher.log"
 PID_FILE="$ROOT/logs/gensyn_runner.pid"
 
 LAST_ACTIVITY_TIME=$(date +%s)
-STUCK_TIMEOUT_SECONDS=1200  # 20 minutes
+STUCK_TIMEOUT_SECONDS=600  # 20 minutes
 ACTIVITY_KEYWORDS=(
   "Joining round:"
   "Starting round:"
