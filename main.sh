@@ -11,7 +11,7 @@ SLICE_FILE="/etc/systemd/system/rl-swarm.slice"
 SERVICE_FILE="/etc/systemd/system/rl-swarm.service"
 RAM_REDUCTION_GB=2
 REPO_URL="https://github.com/gensyn-ai/rl-swarm.git"
-RUN_SCRIPT_URL="https://raw.githubusercontent.com/HustleAirdrops/gensyn-advanced-solutions/main/run_rl_swarm.sh"
+RUN_SCRIPT_URL="https://raw.githubusercontent.com/HustleAirdrops/gensyn-guide-advanced/main/run_rl_swarm.sh"
 HOME_DIR="$HOME"
 RL_SWARM_DIR="$HOME_DIR/rl-swarm"
 
