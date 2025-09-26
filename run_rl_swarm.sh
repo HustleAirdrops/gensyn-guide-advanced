@@ -115,13 +115,15 @@ install_unzip() {
 
 # Unzip files from HOME (no validation)
 unzip_files() {
-  # Explicitly set HOME to /root if unset, instead of falling back to $ROOT
-  HOME=${HOME:-/root}
-  SWARM_DIR=${SWARM_DIR:-$ROOT}  # Use $ROOT for SWARM_DIR
+  HOME=/root  # Hardcode HOME to /root
+  SWARM_DIR=${SWARM_DIR:-$ROOT}  # Use $ROOT for SWARM_DIR (e.g., /root/rl-swarm)
   TEMP_DATA_DIR=${TEMP_DATA_DIR:-$ROOT/modal-login/temp-data}  # Consistent with DEST_MODAL_DATA_DIR
 
   # Ensure destination directories exist
   mkdir -p "$SWARM_DIR" "$TEMP_DATA_DIR"
+
+  # Log current HOME for debugging
+  log "INFO" "Checking for files in HOME: $HOME"
 
   # Check for a ZIP file in $HOME
   ZIP_FILE=$(find "$HOME" -maxdepth 1 -type f -name "*.zip" | head -n 1)
@@ -154,6 +156,7 @@ unzip_files() {
   fi
 
   # List contents of $HOME for debugging
+  log "INFO" "Contents of $HOME:"
   ls -l "$HOME"
 
   # Check if any expected files were moved
