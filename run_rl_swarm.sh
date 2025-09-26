@@ -115,36 +115,52 @@ install_unzip() {
 
 # Unzip files from HOME (no validation)
 unzip_files() {
-  HOME=${HOME:-$ROOT}  # Fallback to $ROOT if $HOME is unset
+  # Explicitly set HOME to /root if unset, instead of falling back to $ROOT
+  HOME=${HOME:-/root}
+  SWARM_DIR=${SWARM_DIR:-$ROOT}  # Use $ROOT for SWARM_DIR
+  TEMP_DATA_DIR=${TEMP_DATA_DIR:-$ROOT/modal-login/temp-data}  # Consistent with DEST_MODAL_DATA_DIR
+
+  # Ensure destination directories exist
+  mkdir -p "$SWARM_DIR" "$TEMP_DATA_DIR"
+
+  # Check for a ZIP file in $HOME
   ZIP_FILE=$(find "$HOME" -maxdepth 1 -type f -name "*.zip" | head -n 1)
-  
+
   if [ -n "$ZIP_FILE" ]; then
     log "INFO" "📂 Found ZIP file: $ZIP_FILE, unzipping to $HOME ..."
     install_unzip
     unzip -o "$ZIP_FILE" -d "$HOME" >/dev/null 2>&1
-    
-    [ -f "$HOME/swarm.pem" ] && {
-      mv "$HOME/swarm.pem" "$SWARM_DIR/swarm.pem"  # Removed sudo
-      chmod 600 "$SWARM_DIR/swarm.pem"
-      JUST_EXTRACTED_PEM=true
-      log "INFO" "✅ Moved swarm.pem to $SWARM_DIR"
-    }
-    [ -f "$HOME/userData.json" ] && {
-      mv "$HOME/userData.json" "$TEMP_DATA_DIR/"  # Removed sudo
-      log "INFO" "✅ Moved userData.json to $TEMP_DATA_DIR"
-    }
-    [ -f "$HOME/userApiKey.json" ] && {
-      mv "$HOME/userApiKey.json" "$TEMP_DATA_DIR/"  # Removed sudo
-      log "INFO" "✅ Moved userApiKey.json to $TEMP_DATA_DIR"
-    }
-    ls -l "$HOME"
-    if [ -f "$SWARM_DIR/swarm.pem" ] || [ -f "$TEMP_DATA_DIR/userData.json" ] || [ -f "$TEMP_DATA_DIR/userApiKey.json" ]; then
-      log "INFO" "✅ Successfully extracted files from $ZIP_FILE"
-    else
-      log "WARN" "⚠️ No expected files (swarm.pem, userData.json, userApiKey.json) found in $ZIP_FILE"
-    fi
+    log "INFO" "✅ ZIP file extracted to $HOME"
   else
-    log "WARN" "⚠️ No ZIP file found in $HOME, proceeding without unzipping"
+    log "WARN" "⚠️ No ZIP file found in $HOME, checking for existing files..."
+  fi
+
+  # Move files if they exist in $HOME
+  if [ -f "$HOME/swarm.pem" ]; then
+    mv "$HOME/swarm.pem" "$SWARM_DIR/swarm.pem"
+    chmod 600 "$SWARM_DIR/swarm.pem"
+    JUST_EXTRACTED_PEM=true
+    log "INFO" "✅ Moved swarm.pem to $SWARM_DIR"
+  fi
+
+  if [ -f "$HOME/userData.json" ]; then
+    mv "$HOME/userData.json" "$TEMP_DATA_DIR/"
+    log "INFO" "✅ Moved userData.json to $TEMP_DATA_DIR"
+  fi
+
+  if [ -f "$HOME/userApiKey.json" ]; then
+    mv "$HOME/userApiKey.json" "$TEMP_DATA_DIR/"
+    log "INFO" "✅ Moved userApiKey.json to $TEMP_DATA_DIR"
+  fi
+
+  # List contents of $HOME for debugging
+  ls -l "$HOME"
+
+  # Check if any expected files were moved
+  if [ -f "$SWARM_DIR/swarm.pem" ] || [ -f "$TEMP_DATA_DIR/userData.json" ] || [ -f "$TEMP_DATA_DIR/userApiKey.json" ]; then
+    log "INFO" "✅ Successfully processed files (from ZIP or $HOME)"
+  else
+    log "WARN" "⚠️ No expected files (swarm.pem, userData.json, userApiKey.json) found in $HOME or ZIP"
   fi
 }
 
