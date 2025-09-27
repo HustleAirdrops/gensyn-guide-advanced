@@ -119,43 +119,43 @@ unzip_files() {
 
   mkdir -p "$SWARM_DIR" "$TEMP_DATA_DIR"
 
-  log "INFO" "Checking for files in $SOURCE_DIR"
+  log "INFO" "Checking for files in /root"
 
-  ZIP_FILE=$(find "$SOURCE_DIR" -maxdepth 1 -type f -name "*.zip" | head -n 1)
+  ZIP_FILE=$(find "/root" -maxdepth 1 -type f -name "*.zip" | head -n 1)
 
   if [ -n "$ZIP_FILE" ]; then
-    log "INFO" "📂 Found ZIP file: $ZIP_FILE, unzipping to $SOURCE_DIR ..."
+    log "INFO" "📂 Found ZIP file: $ZIP_FILE, unzipping to /root ..."
     install_unzip
-    unzip -o "$ZIP_FILE" -d "$SOURCE_DIR" >/dev/null 2>&1
-    log "INFO" "✅ ZIP file extracted to $SOURCE_DIR"
+    unzip -o "$ZIP_FILE" -d "/root" >/dev/null 2>&1
+    log "INFO" "✅ ZIP file extracted to /root"
   else
-    log "WARN" "⚠️ No ZIP file found in $SOURCE_DIR, checking for existing files..."
+    log "WARN" "⚠️ No ZIP file found in /root, checking for existing files..."
   fi
 
-  if [ -f "$SOURCE_DIR/swarm.pem" ]; then
-    mv "$SOURCE_DIR/swarm.pem" "$SWARM_DIR/swarm.pem"
+  if [ -f "/root/swarm.pem" ]; then
+    mv "/root/swarm.pem" "$SWARM_DIR/swarm.pem"
     chmod 600 "$SWARM_DIR/swarm.pem"
     JUST_EXTRACTED_PEM=true
     log "INFO" "✅ Moved swarm.pem to $SWARM_DIR"
   fi
 
-  if [ -f "$SOURCE_DIR/userData.json" ]; then
-    mv "$SOURCE_DIR/userData.json" "$TEMP_DATA_DIR/"
+  if [ -f "/root/userData.json" ]; then
+    mv "/root/userData.json" "$TEMP_DATA_DIR/"
     log "INFO" "✅ Moved userData.json to $TEMP_DATA_DIR"
   fi
 
-  if [ -f "$SOURCE_DIR/userApiKey.json" ]; then
-    mv "$SOURCE_DIR/userApiKey.json" "$TEMP_DATA_DIR/"
+  if [ -f "/root/userApiKey.json" ]; then
+    mv "/root/userApiKey.json" "$TEMP_DATA_DIR/"
     log "INFO" "✅ Moved userApiKey.json to $TEMP_DATA_DIR"
   fi
 
-  log "INFO" "Contents of $SOURCE_DIR:"
-  ls -l "$SOURCE_DIR"
+  log "INFO" "Contents of /root:"
+  ls -l "/root"
 
   if [ -f "$SWARM_DIR/swarm.pem" ] || [ -f "$TEMP_DATA_DIR/userData.json" ] || [ -f "$TEMP_DATA_DIR/userApiKey.json" ]; then
-    log "INFO" "✅ Successfully processed files (from ZIP or $SOURCE_DIR)"
+    log "INFO" "✅ Successfully processed files (from ZIP or /root)"
   else
-    log "WARN" "⚠️ No expected files (swarm.pem, userData.json, userApiKey.json) found in $SOURCE_DIR or ZIP"
+    log "WARN" "⚠️ No expected files (swarm.pem, userData.json, userApiKey.json) found in /root or ZIP"
   fi
 }
 
