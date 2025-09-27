@@ -115,9 +115,8 @@ install_unzip() {
 
 # Unzip files from HOME (no validation)
 unzip_files() {
-  HOME=/root  # Hardcode HOME to /root
-  SWARM_DIR=${SWARM_DIR:-$ROOT}  # Use $ROOT for SWARM_DIR (e.g., /root/rl-swarm)
-  TEMP_DATA_DIR=${TEMP_DATA_DIR:-$ROOT/modal-login/temp-data}  # Consistent with DEST_MODAL_DATA_DIR
+  SWARM_DIR=${SWARM_DIR:-$HOME}  # Use $HOME directly
+  TEMP_DATA_DIR=${TEMP_DATA_DIR:-$HOME/modal-login/temp-data}  # Use $HOME here too
 
   # Ensure destination directories exist
   mkdir -p "$SWARM_DIR" "$TEMP_DATA_DIR"
@@ -166,6 +165,7 @@ unzip_files() {
     log "WARN" "⚠️ No expected files (swarm.pem, userData.json, userApiKey.json) found in $HOME or ZIP"
   fi
 }
+
 
 trap cleanup EXIT
 trap errnotify ERR
