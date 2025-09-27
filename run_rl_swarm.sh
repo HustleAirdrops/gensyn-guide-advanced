@@ -113,58 +113,52 @@ install_unzip() {
   fi
 }
 
-# Unzip files from HOME (no validation)
 unzip_files() {
-  SWARM_DIR=${SWARM_DIR:-$HOME}  # Use $HOME directly
-  TEMP_DATA_DIR=${TEMP_DATA_DIR:-$HOME/modal-login/temp-data}  # Use $HOME here too
+  SWARM_DIR=${SWARM_DIR:-/root}
+  TEMP_DATA_DIR=${TEMP_DATA_DIR:-/root/modal-login/temp-data}
 
-  # Ensure destination directories exist
   mkdir -p "$SWARM_DIR" "$TEMP_DATA_DIR"
 
-  # Log current HOME for debugging
-  log "INFO" "Checking for files in HOME: $HOME"
+  log "INFO" "Checking for files in $SOURCE_DIR"
 
-  # Check for a ZIP file in $HOME
-  ZIP_FILE=$(find "$HOME" -maxdepth 1 -type f -name "*.zip" | head -n 1)
+  ZIP_FILE=$(find "$SOURCE_DIR" -maxdepth 1 -type f -name "*.zip" | head -n 1)
 
   if [ -n "$ZIP_FILE" ]; then
-    log "INFO" "📂 Found ZIP file: $ZIP_FILE, unzipping to $HOME ..."
+    log "INFO" "📂 Found ZIP file: $ZIP_FILE, unzipping to $SOURCE_DIR ..."
     install_unzip
-    unzip -o "$ZIP_FILE" -d "$HOME" >/dev/null 2>&1
-    log "INFO" "✅ ZIP file extracted to $HOME"
+    unzip -o "$ZIP_FILE" -d "$SOURCE_DIR" >/dev/null 2>&1
+    log "INFO" "✅ ZIP file extracted to $SOURCE_DIR"
   else
-    log "WARN" "⚠️ No ZIP file found in $HOME, checking for existing files..."
+    log "WARN" "⚠️ No ZIP file found in $SOURCE_DIR, checking for existing files..."
   fi
 
-  # Move files if they exist in $HOME
-  if [ -f "$HOME/swarm.pem" ]; then
-    mv "$HOME/swarm.pem" "$SWARM_DIR/swarm.pem"
+  if [ -f "$SOURCE_DIR/swarm.pem" ]; then
+    mv "$SOURCE_DIR/swarm.pem" "$SWARM_DIR/swarm.pem"
     chmod 600 "$SWARM_DIR/swarm.pem"
     JUST_EXTRACTED_PEM=true
     log "INFO" "✅ Moved swarm.pem to $SWARM_DIR"
   fi
 
-  if [ -f "$HOME/userData.json" ]; then
-    mv "$HOME/userData.json" "$TEMP_DATA_DIR/"
+  if [ -f "$SOURCE_DIR/userData.json" ]; then
+    mv "$SOURCE_DIR/userData.json" "$TEMP_DATA_DIR/"
     log "INFO" "✅ Moved userData.json to $TEMP_DATA_DIR"
   fi
 
-  if [ -f "$HOME/userApiKey.json" ]; then
-    mv "$HOME/userApiKey.json" "$TEMP_DATA_DIR/"
+  if [ -f "$SOURCE_DIR/userApiKey.json" ]; then
+    mv "$SOURCE_DIR/userApiKey.json" "$TEMP_DATA_DIR/"
     log "INFO" "✅ Moved userApiKey.json to $TEMP_DATA_DIR"
   fi
 
-  # List contents of $HOME for debugging
-  log "INFO" "Contents of $HOME:"
-  ls -l "$HOME"
+  log "INFO" "Contents of $SOURCE_DIR:"
+  ls -l "$SOURCE_DIR"
 
-  # Check if any expected files were moved
   if [ -f "$SWARM_DIR/swarm.pem" ] || [ -f "$TEMP_DATA_DIR/userData.json" ] || [ -f "$TEMP_DATA_DIR/userApiKey.json" ]; then
-    log "INFO" "✅ Successfully processed files (from ZIP or $HOME)"
+    log "INFO" "✅ Successfully processed files (from ZIP or $SOURCE_DIR)"
   else
-    log "WARN" "⚠️ No expected files (swarm.pem, userData.json, userApiKey.json) found in $HOME or ZIP"
+    log "WARN" "⚠️ No expected files (swarm.pem, userData.json, userApiKey.json) found in $SOURCE_DIR or ZIP"
   fi
 }
+
 
 
 trap cleanup EXIT
