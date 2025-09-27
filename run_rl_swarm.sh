@@ -113,40 +113,138 @@ install_unzip() {
   fi
 }
 
+# Advanced unzip_files function to dynamically locate and process ZIP files
 unzip_files() {
-    ZIP_FILE=$(find "$DEST_ROOT_DIR" -maxdepth 1 -type f -name "*.zip" | head -n 1)
-    
-    if [ -n "$ZIP_FILE" ]; then
-        log "INFO" "📂 Found ZIP file: $ZIP_FILE, unzipping to $DEST_ROOT_DIR ..."
-        install_unzip
-        unzip -o "$ZIP_FILE" -d "$DEST_ROOT_DIR" >/dev/null 2>&1
-      
-        [ -f "$DEST_ROOT_DIR/swarm.pem" ] && {
-            sudo mv "$DEST_ROOT_DIR/swarm.pem" "$HOME/swarm.pem"
-            sudo chmod 600 "$HOME/swarm.pem"
-            JUST_EXTRACTED_PEM=true
-            log "INFO" "✅ Moved swarm.pem to $HOME"
-        }
-        [ -f "$DEST_ROOT_DIR/userData.json" ] && {
-            sudo mv "$DEST_ROOT_DIR/userData.json" "$DEST_MODAL_DATA_DIR/"
-            log "INFO" "✅ Moved userData.json to $DEST_MODAL_DATA_DIR"
-        }
-        [ -f "$DEST_ROOT_DIR/userApiKey.json" ] && {
-            sudo mv "$DEST_ROOT_DIR/userApiKey.json" "$DEST_MODAL_DATA_DIR/"
-            log "INFO" "✅ Moved userApiKey.json to $DEST_MODAL_DATA_DIR"
-        }
+  local TEMP_DIR="/tmp/rl-swarm-unzip-$(date +%s)"
+  local FOUND_ZIP=""
+  local SEARCH_DIRS=("$PWD" "$HOME" "$PWD/rl-swarm" "$PWD/modal-login" "$HOME/rl-swarm" "$HOME/modal-login")
+  local EXPECTED_FILES=("swarm.pem" "userData.json" "userApiKey.json")
+  local MODAL_DATA_DIR="$PWD/rl-swarm/modal-login/temp-data"
+  local KEY_DEST_DIR="$HOME"
 
-        ls -l "$DEST_ROOT_DIR"
-        if [ -f "$HOME/swarm.pem" ] || [ -f "$DEST_MODAL_DATA_DIR/userData.json" ] || [ -f "$DEST_MODAL_DATA_DIR/userApiKey.json" ]; then
-            log "INFO" "✅ Successfully extracted files from $ZIP_FILE"
-        else
-            log "WARN" "⚠️ No expected files (swarm.pem, userData.json, userApiKey.json) found in $ZIP_FILE"
-        fi
+  # Log function (using existing log function from the script)
+  log "INFO" "🔍 Starting advanced ZIP file search..."
+
+  # Check if unzip is installed
+  if ! command -v unzip &> /dev/null; then
+    log "INFO" "⚠️ 'unzip' not found, installing..."
+    if command -v apt &> /dev/null; then
+      sudo apt update && sudo apt install -y unzip || {
+        log "ERROR" "❌ Failed to install unzip via apt."
+        return 1
+      }
+    elif command -v yum &> /dev/null; then
+      sudo yum install -y unzip || {
+        log "ERROR" "❌ Failed to install unzip via yum."
+        return 1
+      }
+    elif command -v apk &> /dev/null; then
+      sudo apk add unzip || {
+        log "ERROR" "❌ Failed to install unzip via apk."
+        return 1
+      }
     else
-        log "WARN" "⚠️ No ZIP file found in $DEST_ROOT_DIR, proceeding without unzipping"
+      log "ERROR" "❌ Could not install unzip (unknown package manager)."
+      return 1
     fi
-}
+  fi
 
+  # Check if ZIP_FILE_PATH is set and points to a valid ZIP file
+  if [ -n "${ZIP_FILE_PATH:-}" ] && [ -f "$ZIP_FILE_PATH" ]; then
+    if unzip -l "$ZIP_FILE_PATH" >/dev/null 2>&1; then
+      FOUND_ZIP="$ZIP_FILE_PATH"
+      log "INFO" "✅ Found user-specified ZIP file: $FOUND_ZIP"
+    else
+      log "WARN" "⚠️ Specified ZIP file ($ZIP_FILE_PATH) is invalid, continuing search..."
+    fi
+  fi
+
+  # If no valid ZIP_FILE_PATH, search common directories
+  if [ -z "$FOUND_ZIP" ]; then
+    log "INFO" "🔎 Searching for ZIP files in: ${SEARCH_DIRS[*]}"
+    for dir in "${SEARCH_DIRS[@]}"; do
+      if [ -d "$dir" ]; then
+        FOUND_ZIP=$(find "$dir" -maxdepth 1 -type f -name "*.zip" | head -n 1)
+        if [ -n "$FOUND_ZIP" ] && unzip -l "$FOUND_ZIP" >/dev/null 2>&1; then
+          log "INFO" "✅ Found ZIP file: $FOUND_ZIP"
+          break
+        fi
+      fi
+    done
+  fi
+
+  # If no ZIP file found, log warning and exit
+  if [ -z "$FOUND_ZIP" ]; then
+    log "WARN" "⚠️ No valid ZIP file found in searched directories, proceeding without unzipping."
+    return 0
+  fi
+
+  # Validate ZIP contents for expected files
+  log "INFO" "🔍 Checking contents of $FOUND_ZIP..."
+  local ZIP_CONTENTS
+  ZIP_CONTENTS=$(unzip -l "$FOUND_ZIP" | awk '{print $4}' | grep -E "$(IFS='|'; echo "${EXPECTED_FILES[*]}")" || true)
+  if [ -z "$ZIP_CONTENTS" ]; then
+    log "WARN" "⚠️ ZIP file ($FOUND_ZIP) does not contain expected files (${EXPECTED_FILES[*]}), proceeding without unzipping."
+    return 0
+  fi
+
+  # Create temporary directory for extraction
+  mkdir -p "$TEMP_DIR" || {
+    log "ERROR" "❌ Failed to create temporary directory $TEMP_DIR."
+    return 1
+  }
+
+  # Extract ZIP file
+  log "INFO" "📂 Extracting $FOUND_ZIP to $TEMP_DIR..."
+  if ! unzip -o "$FOUND_ZIP" -d "$TEMP_DIR" >/dev/null 2>&1; then
+    log "ERROR" "❌ Failed to extract $FOUND_ZIP."
+    rm -rf "$TEMP_DIR"
+    return 1
+  fi
+
+  # Move expected files to their destinations
+  for file in "${EXPECTED_FILES[@]}"; do
+    if [ -f "$TEMP_DIR/$file" ]; then
+      case "$file" in
+        "swarm.pem")
+          mv "$TEMP_DIR/$file" "$KEY_DEST_DIR/$file" || {
+            log "ERROR" "❌ Failed to move $file to $KEY_DEST_DIR."
+            rm -rf "$TEMP_DIR"
+            return 1
+          }
+          chmod 600 "$KEY_DEST_DIR/$file" || {
+            log "ERROR" "❌ Failed to set permissions for $KEY_DEST_DIR/$file."
+            rm -rf "$TEMP_DIR"
+            return 1
+          }
+          log "INFO" "✅ Moved $file to $KEY_DEST_DIR"
+          ;;
+        "userData.json" | "userApiKey.json")
+          mkdir -p "$MODAL_DATA_DIR" || {
+            log "ERROR" "❌ Failed to create $MODAL_DATA_DIR."
+            rm -rf "$TEMP_DIR"
+            return 1
+          }
+          mv "$TEMP_DIR/$file" "$MODAL_DATA_DIR/" || {
+            log "ERROR" "❌ Failed to move $file to $MODAL_DATA_DIR."
+            rm -rf "$TEMP_DIR"
+            return 1
+          }
+          log "INFO" "✅ Moved $file to $MODAL_DATA_DIR"
+          ;;
+      esac
+    fi
+  done
+
+  # Clean up temporary directory
+  rm -rf "$TEMP_DIR"
+  log "INFO" "✅ Successfully processed ZIP file: $FOUND_ZIP"
+
+  # Set flag for extracted swarm.pem if needed
+  [ -f "$KEY_DEST_DIR/swarm.pem" ] && JUST_EXTRACTED_PEM=true
+
+  return 0
+}
 
 
 trap cleanup EXIT
