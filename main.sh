@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Check if running as root
-if [ "$(id -u)" -ne 0 ]; then
+# Check if running as root AAAAAAAA
+if [ "$(id -u)" -ne 0 ]; then 
     echo "This script must be run as root. Please use sudo."
     exit 1
 fi
@@ -40,12 +40,13 @@ RUN_SCRIPT_URL="https://raw.githubusercontent.com/HustleAirdrops/gensyn-guide-ad
 # Get the actual user's home directory (not root's)
 if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
     HOME_DIR=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    log "INFO" "Running as sudo user: $SUDO_USER, home directory: $HOME_DIR"
 else
     HOME_DIR="$HOME"
+    log "INFO" "Running as root, home directory: $HOME_DIR"
 fi
 RL_SWARM_DIR="$HOME_DIR/rl-swarm"
 
-log "INFO" "User's home directory set to: $HOME_DIR"
 log "INFO" "RL Swarm directory set to: $RL_SWARM_DIR"
 
 # Calculate CPU and RAM limits
@@ -77,7 +78,12 @@ log "INFO" "Systemd slice file created"
 log "INFO" "Updating package lists and installing dependencies"
 apt-get update
 apt-get install -y git python3-venv
-log "INFO" "Dependencies installed"
+if [ $? -eq 0 ]; then
+    log "INFO" "Dependencies installed"
+else
+    log "ERROR" "Failed to install dependencies"
+    exit 1
+fi
 
 # Stop and clean up existing service
 log "INFO" "Stopping and cleaning up existing rl-swarm service"
@@ -104,8 +110,13 @@ cd "$RL_SWARM_DIR"
 # Download and set up modified run_rl_swarm.sh
 log "INFO" "Downloading run_rl_swarm.sh from $RUN_SCRIPT_URL"
 wget -O run_rl_swarm.sh "$RUN_SCRIPT_URL"
-chmod +x run_rl_swarm.sh
-log "INFO" "run_rl_swarm.sh downloaded and made executable"
+if [ $? -eq 0 ]; then
+    chmod +x run_rl_swarm.sh
+    log "INFO" "run_rl_swarm.sh downloaded and made executable"
+else
+    log "ERROR" "Failed to download run_rl_swarm.sh"
+    exit 1
+fi
 
 # Install unzip if missing
 install_unzip() {
@@ -162,7 +173,7 @@ unzip_files() {
         if unzip -o "$ZIP_FILE" -d "$HOME_DIR"; then
             log "INFO" "Successfully unzipped $ZIP_FILE"
         else
-            log "ERROR" "Failed to unzip $ZIP_FILE"
+            log "ERROR" "Failed to unzip $ZIP_FILE (corrupted or password-protected?)"
             exit 1
         fi
       
@@ -200,7 +211,8 @@ unzip_files() {
             log "WARN" "⚠️ No expected files (swarm.pem, userData.json, userApiKey.json) found in $ZIP_FILE"
         fi
     else
-        log "WARN" "⚠️ No ZIP file found in $HOME_DIR, proceeding without unzipping"
+        log "ERROR" "❌ No ZIP file found in $HOME_DIR, cannot proceed without required files"
+        exit 1
     fi
 }
 
@@ -223,7 +235,12 @@ done
 # Create Python virtual environment
 log "INFO" "Creating Python virtual environment in $RL_SWARM_DIR/.venv"
 python3 -m venv .venv
-log "INFO" "Virtual environment created"
+if [ $? -eq 0 ]; then
+    log "INFO" "Virtual environment created"
+else
+    log "ERROR" "Failed to create Python virtual environment"
+    exit 1
+fi
 
 # Create systemd service
 log "INFO" "Creating systemd service file at $SERVICE_FILE"
