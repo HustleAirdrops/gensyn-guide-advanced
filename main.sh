@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Check if running as root AAAAAAAAAAA
+# Check if running as root
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script must be run as root. Please use sudo."
     exit 1
@@ -36,10 +36,16 @@ SERVICE_FILE="/etc/systemd/system/rl-swarm.service"
 RAM_REDUCTION_GB=2
 REPO_URL="https://github.com/gensyn-ai/rl-swarm.git"
 RUN_SCRIPT_URL="https://raw.githubusercontent.com/HustleAirdrops/gensyn-guide-advanced/main/run_rl_swarm.sh"
-HOME_DIR="$HOME"  # This is /root for root user
+
+# Get the actual user's home directory (not root's)
+if [ -n "$SUDO_USER" ] && [ "$SUDO_USER" != "root" ]; then
+    HOME_DIR=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+    HOME_DIR="$HOME"
+fi
 RL_SWARM_DIR="$HOME_DIR/rl-swarm"
 
-log "INFO" "Home directory set to: $HOME_DIR"
+log "INFO" "User's home directory set to: $HOME_DIR"
 log "INFO" "RL Swarm directory set to: $RL_SWARM_DIR"
 
 # Calculate CPU and RAM limits
@@ -146,7 +152,10 @@ unzip_files() {
     if [ -n "$ZIP_FILE" ]; then
         log "INFO" "📂 Found ZIP file: $ZIP_FILE"
         log "INFO" "Listing contents of $ZIP_FILE"
-        unzip -l "$ZIP_FILE"
+        unzip -l "$ZIP_FILE" || {
+            log "ERROR" "Failed to list contents of $ZIP_FILE"
+            exit 1
+        }
         
         install_unzip
         log "INFO" "Unzipping $ZIP_FILE to $HOME_DIR"
