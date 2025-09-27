@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
-# rl-swarm launcher (v0.1.6) + autorestart + autologin + localtunnel + non-interactive defaults + CPU/GPU-aware torch AAA
+# rl-swarm launcher (v0.1.6) + autorestart + autologin + localtunnel + non-interactive defaults + CPU/GPU-aware torch
 set -euo pipefail
 
 # --- General arguments ---
 ROOT=$PWD
-HOME=${HOME:-$ROOT}  # Fallback to $ROOT if $HOME is unset
-SWARM_DIR="$HOME/rl-swarm"  # Define SWARM_DIR early
+# Determine effective home directory (handles sudo cases)
+CURRENT_USER=$(whoami)
+if [ "$CURRENT_USER" = "root" ] && [ -n "${SUDO_USER:-}" ]; then
+  CURRENT_USER="$SUDO_USER"
+  HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+  HOME=${HOME:-/home/$CURRENT_USER}
+fi
+[ -z "$HOME" ] && HOME="$PWD"  # Fallback to PWD if HOME is unset
+SWARM_DIR="$HOME/rl-swarm"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEST_MODAL_DATA_DIR="$ROOT/rl-swarm/modal-login/temp-data"
 
 # --- Version ---
 GENRL_TAG="0.1.6"
@@ -26,7 +35,7 @@ export MODEL_NAME="Gensyn/Qwen2.5-0.5B-Instruct"  # auto choose default model
 export PRG_GAME=true  # Playing PRG game: true
 
 # Path to RSA private key (auto-create by app if missing)
-DEFAULT_IDENTITY_PATH="$ROOT"/swarm.pem
+DEFAULT_IDENTITY_PATH="$HOME/swarm.pem"
 IDENTITY_PATH=${IDENTITY_PATH:-$DEFAULT_IDENTITY_PATH}
 DOCKER=${DOCKER:-""}
 GENSYN_RESET_CONFIG=${GENSYN_RESET_CONFIG:-""}
@@ -44,7 +53,7 @@ echo_red() { echo -e "$RED_TEXT$1$RESET_TEXT"; }
 
 # --- Log function ---
 log() {
-  echo "[$1] $2"
+  echo "[$(date +'%Y-%m-%d %H:%M:%S')] [$1] $2"
 }
 
 # --- System limits ---
@@ -53,9 +62,7 @@ echo_green ">> File descriptor limits: $(ulimit -n)"
 
 # --- Auto-login helpers ---
 SOURCE_DIR="/root/"
-DEST_MODAL_DATA_DIR="$ROOT/modal-login/temp-data/"
-DEST_ROOT_DIR="$ROOT/"
-TEMP_DATA_DIR="$ROOT/modal-login/temp-data"  # Corrected to match DEST_MODAL_DATA_DIR
+TEMP_DATA_DIR="$ROOT/rl-swarm/modal-login/temp-data"
 
 # --- PIDs for cleanup ---
 SERVER_PID=""
@@ -94,7 +101,7 @@ cleanup() {
 }
 
 errnotify() {
-  echo_red ">> A critical error was detected while running rl-swarm. See $ROOT/logs for logs."
+  echo_red ">> A critical error was detected while running rl-swarm. See $ROOT/rl-swarm/logs for logs."
 }
 
 install_unzip() {
@@ -113,41 +120,48 @@ install_unzip() {
   fi
 }
 
-# Advanced unzip_files function to dynamically locate and process ZIP files
 unzip_files() {
   local TEMP_DIR="/tmp/rl-swarm-unzip-$(date +%s)"
   local FOUND_ZIP=""
-  local SEARCH_DIRS=("$PWD" "$HOME" "$PWD/rl-swarm" "$PWD/modal-login" "$HOME/rl-swarm" "$HOME/modal-login")
+  local EFFECTIVE_HOME
+  local SEARCH_DIRS
   local EXPECTED_FILES=("swarm.pem" "userData.json" "userApiKey.json")
   local MODAL_DATA_DIR="$PWD/rl-swarm/modal-login/temp-data"
-  local KEY_DEST_DIR="$HOME"
+  local KEY_DEST_DIR
 
-  # Log function (using existing log function from the script)
-  log "INFO" "🔍 Starting advanced ZIP file search..."
+  log "INFO" "🔍 Starting advanced ZIP file search at $(date '+%Y-%m-%d %H:%M:%S')..."
+
+  # Debug: Log $HOME and $PWD
+  log "INFO" "🔎 Current environment: PWD=$PWD, HOME=$HOME"
+
+  # Determine effective home directory
+  CURRENT_USER=$(whoami)
+  if [ "$CURRENT_USER" = "root" ] && [ -n "${SUDO_USER:-}" ]; then
+    CURRENT_USER="$SUDO_USER"
+    EFFECTIVE_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    log "INFO" "🔎 Running as sudo, using effective user: $CURRENT_USER, home: $EFFECTIVE_HOME"
+  else
+    EFFECTIVE_HOME="$HOME"
+    log "INFO" "🔎 Running as user: $CURRENT_USER, home: $EFFECTIVE_HOME"
+  fi
+  [ -z "$EFFECTIVE_HOME" ] && EFFECTIVE_HOME="$PWD"
+
+  # Set KEY_DEST_DIR to effective home
+  KEY_DEST_DIR="$EFFECTIVE_HOME"
+
+  # Define search directories
+  SEARCH_DIRS=(
+    "$EFFECTIVE_HOME"
+    "$PWD"
+    "$EFFECTIVE_HOME/rl-swarm"
+    "$PWD/rl-swarm"
+    "$EFFECTIVE_HOME/modal-login"
+    "$PWD/modal-login"
+    "/home"  # Fallback to search all /home/* directories
+  )
 
   # Check if unzip is installed
-  if ! command -v unzip &> /dev/null; then
-    log "INFO" "⚠️ 'unzip' not found, installing..."
-    if command -v apt &> /dev/null; then
-      sudo apt update && sudo apt install -y unzip || {
-        log "ERROR" "❌ Failed to install unzip via apt."
-        return 1
-      }
-    elif command -v yum &> /dev/null; then
-      sudo yum install -y unzip || {
-        log "ERROR" "❌ Failed to install unzip via yum."
-        return 1
-      }
-    elif command -v apk &> /dev/null; then
-      sudo apk add unzip || {
-        log "ERROR" "❌ Failed to install unzip via apk."
-        return 1
-      }
-    else
-      log "ERROR" "❌ Could not install unzip (unknown package manager)."
-      return 1
-    fi
-  fi
+  install_unzip
 
   # Check if ZIP_FILE_PATH is set and points to a valid ZIP file
   if [ -n "${ZIP_FILE_PATH:-}" ] && [ -f "$ZIP_FILE_PATH" ]; then
@@ -159,7 +173,7 @@ unzip_files() {
     fi
   fi
 
-  # If no valid ZIP_FILE_PATH, search common directories
+  # If no valid ZIP_FILE_PATH, search directories
   if [ -z "$FOUND_ZIP" ]; then
     log "INFO" "🔎 Searching for ZIP files in: ${SEARCH_DIRS[*]}"
     for dir in "${SEARCH_DIRS[@]}"; do
@@ -246,7 +260,6 @@ unzip_files() {
   return 0
 }
 
-
 trap cleanup EXIT
 trap errnotify ERR
 
@@ -276,7 +289,7 @@ if [ -n "$DOCKER" ]; then
 fi
 
 # --- Logs dir ---
-mkdir -p "$ROOT/logs"
+mkdir -p "$ROOT/rl-swarm/logs"
 
 # --- Localtunnel helpers ---
 install_localtunnel() {
@@ -314,7 +327,7 @@ start_localtunnel() {
 # --- CONNECT_TO_TESTNET flow (with autologin & localtunnel) ---
 if [ "$CONNECT_TO_TESTNET" = true ]; then
   echo "Please login to create an Ethereum Server Wallet"
-  cd "$ROOT/modal-login"
+  cd "$ROOT/rl-swarm/modal-login"
   unzip_files
   # Node.js + NVM
   if ! command -v node >/dev/null 2>&1; then
@@ -342,7 +355,7 @@ if [ "$CONNECT_TO_TESTNET" = true ]; then
     fi
   fi
   # Patch .env
-  ENV_FILE="$ROOT/modal-login/.env"
+  ENV_FILE="$ROOT/rl-swarm/modal-login/.env"
   if [[ "$OSTYPE" == "darwin"* ]]; then
     sed -i '' "3s/.*/SWARM_CONTRACT_ADDRESS=$SWARM_CONTRACT/" "$ENV_FILE"
     sed -i '' "4s/.*/PRG_CONTRACT_ADDRESS=$PRG_CONTRACT/" "$ENV_FILE"
@@ -354,9 +367,9 @@ if [ "$CONNECT_TO_TESTNET" = true ]; then
   if [ -z "$DOCKER" ]; then
     yarn install --immutable
     echo "Building server"
-    yarn build > "$ROOT/logs/yarn.log" 2>&1
+    yarn build > "$ROOT/rl-swarm/logs/yarn.log" 2>&1
   fi
-  yarn start >> "$ROOT/logs/yarn.log" 2>&1 &
+  yarn start >> "$ROOT/rl-swarm/logs/yarn.log" 2>&1 &
   SERVER_PID=$!
   echo "Started server process: $SERVER_PID"
   sleep 5
@@ -366,11 +379,11 @@ if [ "$CONNECT_TO_TESTNET" = true ]; then
     mkdir -p "$DEST_MODAL_DATA_DIR"
     cp -f "$SOURCE_DIR/userData.json" "$DEST_MODAL_DATA_DIR"
     cp -f "$SOURCE_DIR/userApiKey.json" "$DEST_MODAL_DATA_DIR"
-    if [ -f "$SOURCE_DIR/swarm.pem" ] && [ ! -f "$DEST_ROOT_DIR/swarm.pem" ]; then
+    if [ -f "$SOURCE_DIR/swarm.pem" ] && [ ! -f "$KEY_DEST_DIR/swarm.pem" ]; then
       echo ">> Copying swarm.pem to project root..."
-      cp -f "$SOURCE_DIR/swarm.pem" "$DEST_ROOT_DIR" || true
+      cp -f "$SOURCE_DIR/swarm.pem" "$KEY_DEST_DIR" || true
     fi
-  elif [ -f "$ROOT/modal-login/temp-data/userData.json" ] && [ -f "$ROOT/modal-login/temp-data/userApiKey.json" ]; then
+  elif [ -f "$ROOT/rl-swarm/modal-login/temp-data/userData.json" ] && [ -f "$ROOT/rl-swarm/modal-login/temp-data/userApiKey.json" ]; then
     echo_green ">> Credentials already exist under modal-login/temp-data/, skipping login..."
   else
     echo_green ">> Credentials not found; starting localtunnel/public login flow..."
@@ -390,7 +403,7 @@ if [ "$CONNECT_TO_TESTNET" = true ]; then
     fi
     echo_green ">> Waiting for login to finish & credentials to appear..."
     while true; do
-      if [ -f "$ROOT/modal-login/temp-data/userData.json" ] && [ -f "$ROOT/modal-login/temp-data/userApiKey.json" ]; then
+      if [ -f "$ROOT/rl-swarm/modal-login/temp-data/userData.json" ] && [ -f "$ROOT/rl-swarm/modal-login/temp-data/userApiKey.json" ]; then
         echo_green ">> Credentials generated."
         break
       fi
@@ -400,8 +413,8 @@ if [ "$CONNECT_TO_TESTNET" = true ]; then
   fi
   cd "$ROOT"
   # Extract ORG_ID
-  if [ -f "$ROOT/modal-login/temp-data/userData.json" ]; then
-    ORG_ID=$(awk 'BEGIN { FS = "\"" } !/^[ \t]*[{}]/ { print $(NF - 1); exit }' "$ROOT/modal-login/temp-data/userData.json")
+  if [ -f "$ROOT/rl-swarm/modal-login/temp-data/userData.json" ]; then
+    ORG_ID=$(awk 'BEGIN { FS = "\"" } !/^[ \t]*[{}]/ { print $(NF - 1); exit }' "$ROOT/rl-swarm/modal-login/temp-data/userData.json")
     echo "Your ORG_ID is set to: $ORG_ID"
   else
     echo_red "ERROR: userData.json not found to extract ORG_ID. Make sure you are logged in."
@@ -421,14 +434,13 @@ if [ "$CONNECT_TO_TESTNET" = true ]; then
   done
 fi
 
-# --- Python deps (CPU/GPU-aware like requested) ---
+# --- Python deps (CPU/GPU-aware) ---
 echo_green ">> Getting Python requirements..."
 python3 -m pip install --upgrade pip
 echo_green ">> Removing potentially conflicting torch/transformers..."
 python3 -m pip uninstall -y torch transformers || true
 echo_green ">> Installing PyTorch (auto-detect CPU/GPU)..."
 TORCH_CHANNEL_CPU="https://download.pytorch.org/whl/cpu"
-# Override if needed: export TORCH_CUDA_CHANNEL=cu124 (or cu121)
 TORCH_CUDA_CHANNEL="${TORCH_CUDA_CHANNEL:-cu121}"
 if [ -n "${CPU_ONLY:-}" ]; then
   python3 -m pip install --index-url "$TORCH_CHANNEL_CPU" torch
@@ -449,26 +461,26 @@ python3 -m pip install "reasoning-gym>=0.1.20"
 python3 -m pip install "hivemind@git+https://github.com/gensyn-ai/hivemind@639c964a8019de63135a2594663b5bec8e5356dd"
 
 # --- Config sync ---
-if [ ! -d "$ROOT/configs" ]; then mkdir -p "$ROOT/configs"; fi
-if [ -f "$ROOT/configs/rg-swarm.yaml" ]; then
-  if ! cmp -s "$ROOT/rgym_exp/config/rg-swarm.yaml" "$ROOT/configs/rg-swarm.yaml"; then
+if [ ! -d "$ROOT/rl-swarm/configs" ]; then mkdir -p "$ROOT/rl-swarm/configs"; fi
+if [ -f "$ROOT/rl-swarm/configs/rg-swarm.yaml" ]; then
+  if ! cmp -s "$ROOT/rgym_exp/config/rg-swarm.yaml" "$ROOT/rl-swarm/configs/rg-swarm.yaml"; then
     if [ -z "$GENSYN_RESET_CONFIG" ]; then
       echo_green ">> Found differences in rg-swarm.yaml. Set GENSYN_RESET_CONFIG to reset to default."
     else
       echo_green ">> Backing up and resetting rg-swarm.yaml to default."
-      mv "$ROOT/configs/rg-swarm.yaml" "$ROOT/configs/rg-swarm.yaml.bak"
-      cp "$ROOT/rgym_exp/config/rg-swarm.yaml" "$ROOT/configs/rg-swarm.yaml"
+      mv "$ROOT/rl-swarm/configs/rg-swarm.yaml" "$ROOT/rl-swarm/configs/rg-swarm.yaml.bak"
+      cp "$ROOT/rgym_exp/config/rg-swarm.yaml" "$ROOT/rl-swarm/configs/rg-swarm.yaml"
     fi
   fi
 else
-  cp "$ROOT/rgym_exp/config/rg-swarm.yaml" "$ROOT/configs/rg-swarm.yaml"
+  cp "$ROOT/rgym_exp/config/rg-swarm.yaml" "$ROOT/rl-swarm/configs/rg-swarm.yaml"
 fi
 if [ -n "$DOCKER" ]; then
   sudo chmod -R 0777 /home/gensyn/rl_swarm/configs || true
 fi
 echo_green ">> Done!"
 
-# --- Non-interactive summaries (no prompts) ---
+# --- Non-interactive summaries ---
 echo_green ">> Would you like to push models you train in the RL swarm to the Hugging Face Hub? [y/N]  --> N (auto)"
 echo_green ">> Enter the name of the model you want to use in huggingface repo/name format, or press [Enter] to use the default model.  --> ${MODEL_NAME} (auto)"
 echo_green ">> Playing PRG game: ${PRG_GAME}"
@@ -476,9 +488,9 @@ echo_blue ">> And remember to star the repo on GitHub! --> https://github.com/ge
 
 # --- Autorestart loop ---
 stop_loop="false"
-TEMP_LOG_FILE="$ROOT/logs/temp_swarm_launcher_output.log"
-FINAL_LOG_FILE="$ROOT/logs/swarm_launcher.log"
-PID_FILE="$ROOT/logs/gensyn_runner.pid"
+TEMP_LOG_FILE="$ROOT/rl-swarm/logs/temp_swarm_launcher_output.log"
+FINAL_LOG_FILE="$ROOT/rl-swarm/logs/swarm_launcher.log"
+PID_FILE="$ROOT/rl-swarm/logs/gensyn_runner.pid"
 LAST_ACTIVITY_TIME=$(date +%s)
 STUCK_TIMEOUT_SECONDS=600  # 20 minutes
 ACTIVITY_KEYWORDS=(
