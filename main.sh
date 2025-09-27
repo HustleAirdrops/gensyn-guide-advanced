@@ -56,6 +56,58 @@ cd "$RL_SWARM_DIR"
 wget -O run_rl_swarm.sh "$RUN_SCRIPT_URL"
 chmod +x run_rl_swarm.sh
 
+install_unzip() {
+    if ! command -v unzip &> /dev/null; then
+        log "INFO" "⚠️ 'unzip' not found, installing..."
+        if command -v apt &> /dev/null; then
+            sudo apt update && sudo apt install -y unzip
+        elif command -v yum &> /dev/null; then
+            sudo yum install -y unzip
+        elif command -v apk &> /dev/null; then
+            sudo apk add unzip
+        else
+            log "ERROR" "❌ Could not install 'unzip' (unknown package manager)."
+            exit 1
+        fi
+    fi
+}
+
+# Unzip files from HOME (no validation)
+unzip_files() {
+    ZIP_FILE=$(find "$HOME_DIR" -maxdepth 1 -type f -name "*.zip" | head -n 1)
+    
+    if [ -n "$ZIP_FILE" ]; then
+        log "INFO" "📂 Found ZIP file: $ZIP_FILE, unzipping to $HOME_DIR ..."
+        install_unzip
+        unzip -o "$ZIP_FILE" -d "$HOME_DIR" >/dev/null 2>&1
+      
+        [ -f "$HOME_DIR/swarm.pem" ] && {
+            sudo mv "$HOME_DIR/swarm.pem" "$HOME_DIR/rl-swarm/swarm.pem"
+            sudo chmod 600 "$HOME_DIR/rl-swarm/swarm.pem"
+            JUST_EXTRACTED_PEM=true
+            log "INFO" "✅ Moved swarm.pem to $HOME_DIR/rl-swarm/"
+        }
+        [ -f "$HOME_DIR/userData.json" ] && {
+            sudo mv "$HOME_DIR/userData.json" "$HOME_DIR/rl-swarm/modal-login/temp-data//"
+            log "INFO" "✅ Moved userData.json to $HOME_DIR/rl-swarm/modal-login/temp-data/"
+        }
+        [ -f "$HOME_DIR/userApiKey.json" ] && {
+            sudo mv "$HOME_DIR/userApiKey.json" "$HOME_DIR/rl-swarm/modal-login/temp-data/"
+            log "INFO" "✅ Moved userApiKey.json to $HOME_DIR/rl-swarm/modal-login/temp-data/"
+        }
+
+        ls -l "$HOME_DIR"
+        if [ -f "$HOME_DIR/rl-swarm/swarm.pem" ] || [ -f "$HOME_DIR/rl-swarm/modal-login/temp-data/userData.json" ] || [ -f "$HOME_DIR/rl-swarm/modal-login/temp-data/userApiKey.json" ]; then
+            log "INFO" "✅ Successfully extracted files from $ZIP_FILE"
+        else
+            log "WARN" "⚠️ No expected files (swarm.pem, userData.json, userApiKey.json) found in $ZIP_FILE"
+        fi
+    else
+        log "WARN" "⚠️ No ZIP file found in $HOME_DIR, proceeding without unzipping"
+    fi
+}
+
+unzip_files
 # Copy existing credentials (if any)
 for file in userApiKey.json userData.json swarm.pem; do
     [ -f "$HOME_DIR/rl-swarm/modal-login/temp-data/$file" ] && cp "$HOME_DIR/rl-swarm/modal-login/temp-data/$file" "$HOME_DIR/"
