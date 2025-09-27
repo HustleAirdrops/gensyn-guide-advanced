@@ -6,6 +6,23 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+# Color setup
+if [ -t 1 ] && [ -n "$(tput colors)" ] && [ "$(tput colors)" -ge 8 ]; then
+    BOLD=$(tput bold)
+    RED=$(tput setaf 1)
+    GREEN=$(tput setaf 2)
+    YELLOW=$(tput setaf 3)
+    CYAN=$(tput setaf 6)
+    NC=$(tput sgr0)
+else
+    BOLD=""
+    RED=""
+    GREEN=""
+    YELLOW=""
+    CYAN=""
+    NC=""
+fi
+
 # Variables
 SLICE_FILE="/etc/systemd/system/rl-swarm.slice"
 SERVICE_FILE="/etc/systemd/system/rl-swarm.service"
