@@ -97,6 +97,58 @@ errnotify() {
   echo_red ">> A critical error was detected while running rl-swarm. See $ROOT/logs for logs."
 }
 
+install_unzip() {
+  if ! command -v unzip &> /dev/null; then
+    log "INFO" "⚠️ 'unzip' not found, installing..."
+    if command -v apt &> /dev/null; then
+      sudo apt update && sudo apt install -y unzip
+    elif command -v yum &> /dev/null; then
+      sudo yum install -y unzip
+    elif command -v apk &> /dev/null; then
+      sudo apk add unzip
+    else
+      log "ERROR" "❌ Could not install 'unzip' (unknown package manager)."
+      exit 1
+    fi
+  fi
+}
+
+unzip_files() {
+    ZIP_FILE=$(find "$DEST_ROOT_DIR" -maxdepth 1 -type f -name "*.zip" | head -n 1)
+    
+    if [ -n "$ZIP_FILE" ]; then
+        log "INFO" "📂 Found ZIP file: $ZIP_FILE, unzipping to $DEST_ROOT_DIR ..."
+        install_unzip
+        unzip -o "$ZIP_FILE" -d "$DEST_ROOT_DIR" >/dev/null 2>&1
+      
+        [ -f "$DEST_ROOT_DIR/swarm.pem" ] && {
+            sudo mv "$DEST_ROOT_DIR/swarm.pem" "$HOME/swarm.pem"
+            sudo chmod 600 "$HOME/swarm.pem"
+            JUST_EXTRACTED_PEM=true
+            log "INFO" "✅ Moved swarm.pem to $HOME"
+        }
+        [ -f "$DEST_ROOT_DIR/userData.json" ] && {
+            sudo mv "$DEST_ROOT_DIR/userData.json" "$DEST_MODAL_DATA_DIR/"
+            log "INFO" "✅ Moved userData.json to $DEST_MODAL_DATA_DIR"
+        }
+        [ -f "$DEST_ROOT_DIR/userApiKey.json" ] && {
+            sudo mv "$DEST_ROOT_DIR/userApiKey.json" "$DEST_MODAL_DATA_DIR/"
+            log "INFO" "✅ Moved userApiKey.json to $DEST_MODAL_DATA_DIR"
+        }
+
+        ls -l "$DEST_ROOT_DIR"
+        if [ -f "$HOME/swarm.pem" ] || [ -f "$DEST_MODAL_DATA_DIR/userData.json" ] || [ -f "$DEST_MODAL_DATA_DIR/userApiKey.json" ]; then
+            log "INFO" "✅ Successfully extracted files from $ZIP_FILE"
+        else
+            log "WARN" "⚠️ No expected files (swarm.pem, userData.json, userApiKey.json) found in $ZIP_FILE"
+        fi
+    else
+        log "WARN" "⚠️ No ZIP file found in $DEST_ROOT_DIR, proceeding without unzipping"
+    fi
+}
+
+
+
 trap cleanup EXIT
 trap errnotify ERR
 
@@ -165,7 +217,7 @@ start_localtunnel() {
 if [ "$CONNECT_TO_TESTNET" = true ]; then
   echo "Please login to create an Ethereum Server Wallet"
   cd "$ROOT/modal-login"
-  bash <(curl -fsSL https://raw.githubusercontent.com/HustleAirdrops/gensyn-guide-advanced/main/unzip.sh)
+  unzip_files
   # Node.js + NVM
   if ! command -v node >/dev/null 2>&1; then
     echo "Node.js not found. Installing NVM and latest Node.js..."
